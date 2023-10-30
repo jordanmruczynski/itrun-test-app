@@ -1,7 +1,7 @@
-package pl.jordanmruczynski.itruntestapp;
+package pl.jordanmruczynski.itruntestapp.services;
 
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
+import pl.jordanmruczynski.itruntestapp.Person;
 import reactor.core.publisher.Mono;
 
 import javax.xml.bind.JAXBContext;
@@ -9,43 +9,47 @@ import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
 import javax.xml.bind.Unmarshaller;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 @Service
-public class EmployeeService {
+public class EmployeeServiceImpl implements EmployeeService {
     private static final String INTERNAL_DIR = "Internal";
     private static final String EXTERNAL_DIR = "External";
     private final JAXBContext jaxbContext;
 
-    public EmployeeService() throws JAXBException {
+    public EmployeeServiceImpl() throws JAXBException {
         this.jaxbContext = JAXBContext.newInstance(Person.class);
     }
 
-    public Mono<Person> findEmployee(String type, String firstName, String lastName, String mobile) {
+    public Mono<Optional<Person>> findEmployee(String type, String firstName, String lastName, String mobile) {
         return Mono.fromCallable(() -> {
             File directory = new File(getDirectoryPath(type));
-            return Stream.of(directory.listFiles())
+            return Stream.of(Optional.ofNullable(directory.listFiles()).orElse(new File[0]))
                     .filter(file -> file.getName().endsWith(".xml"))
                     .map(file -> {
                         try {
                             Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
                             Person person = (Person) unmarshaller.unmarshal(file);
                             if (person.getFirstName().equals(firstName) && person.getLastName().equals(lastName) && person.getMobile().equals(mobile)) {
-                                return person;
+                                return Optional.of(person);
                             }
                         } catch (JAXBException e) {
                             e.printStackTrace();
                         }
-                        return null;
+                        return Optional.<Person>empty();
                     })
-                    .filter(Objects::nonNull)
+                    .filter(Optional::isPresent)
                     .findFirst()
-                    .orElse(null);
+                    .orElse(Optional.empty());
         });
     }
 
+    @Override
     public Mono<Void> createEmployee(String type, Person person) {
         return Mono.fromRunnable(() -> {
             try {
@@ -62,6 +66,7 @@ public class EmployeeService {
         });
     }
 
+    @Override
     public Mono<Boolean> removeEmployee(String type, String personId) {
         return Mono.fromSupplier(() -> {
             File file = new File(getDirectoryPath(type), personId + ".xml");
@@ -69,6 +74,7 @@ public class EmployeeService {
         });
     }
 
+    @Override
     public Mono<Void> modifyEmployee(String type, Person person) {
         return Mono.fromRunnable(() -> {
             try {
